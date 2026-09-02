@@ -1,0 +1,220 @@
+---
+title: "Doručování webhooků"
+sidebarTitle: "Doručování webhooků"
+description: "Jak SmsManager doručuje webhooky: jak dlouho čeká na odpověď (5 s), že vyžaduje HTTP 2xx, jak opakuje volání (až 5×), hlavičky X-Request-Id a X-Request-Signature, nastavení callback_secret a sestavení vlastního formátu požadavku."
+---
+
+Tato stránka popisuje **mechaniku doručování webhooků** — jak dlouho SmsManager čeká na odpověď vašeho serveru, co považuje za úspěch, jak volání opakuje, jak ověřit pravost požadavku přes podpis a jak si sestavit vlastní formát požadavku. Nastavení callback URL, formát payloadu a typy událostí najdete v návodu [Webhooky](/guides/webhooks).
+
+---
+
+## Doručení a očekávaná odpověď
+
+Když nastane událost, SmsManager pošle na vaši callback URL HTTP požadavek a **čeká na odpověď nejvýše 5 sekund**. Pokud váš server do této doby neodpoví, pokus je považován za neúspěšný a zařazen k opakování.
+
+- **Za úspěch se považuje pouze stavový kód `2xx` (200–299).** Tělo odpovědi se vůbec nečte — rozhoduje jen stavový kód. Nemusíte tedy vracet žádný konkrétní obsah.
+- **Přesměrování (`3xx`) se nenásleduje** a počítá se jako neúspěch. Uvádějte proto přímo finální URL.
+
+<Tip>
+  Odpovězte `200 OK` co nejdříve a payload zpracujte až následně (asynchronně, například přes frontu). Držíte tím dobu odezvy pod limitem 5 s a předejdete zbytečnému opakování. Další doporučení najdete v sekci [Osvědčené postupy](/guides/webhooks) návodu.
+</Tip>
+
+---
+
+## Opakování při selhání
+
+Pokud pokus selže, SmsManager doručení zopakuje. Opakování se spustí v těchto případech:
+
+- server neodpověděl (vypršel časový limit) nebo se spojení nezdařilo,
+- odpověď byla přesměrování (`3xx`),
+- stav `408 Request Timeout` nebo `429 Too Many Requests`,
+- jakýkoli stav `5xx`,
+- ostatní stavy `4xx`.
+
+Zpráva je doručena **nejvýše 5×** (první pokus a až 4 opakování). Mezi pokusy roste prodleva (exponenciální backoff). Po pátém neúspěšném pokusu se událost zahodí.
+
+| Pokus | Prodleva před tímto pokusem |
+| --- | --- |
+| 1 (první doručení) | — |
+| 2 | ~30 s |
+| 3 | ~60 s |
+| 4 | ~120 s |
+| 5 (poslední) | ~240 s |
+
+<Note>
+  Kvůli opakování musí být váš handler **idempotentní** — stejná událost může dorazit vícekrát. K deduplikaci na úrovni HTTP požadavku použijte hlavičku [`X-Request-Id`](#hlavička-x-request-id) (viz níže), na úrovni jednotlivé události pak kombinaci `message_id` + `result` (viz [poznámka o idempotenci](/guides/webhooks) v návodu).
+</Note>
+
+---
+
+## Hlavička X-Request-Id
+
+Každý webhook požadavek nese hlavičku **`X-Request-Id`** — identifikátor ve formátu UUID odvozený ze sady zpráv, které jsou v daném doručení spojeny. Vzniká jako `sha256` ze seřazených ID zpráv, z něhož se prvních 32 hex znaků přeformátuje do tvaru UUID.
+
+- **Je stabilní napříč opakováními** téhož doručení a nezávisí na pořadí zpráv — díky tomu jej lze použít jako klíč pro deduplikaci na úrovni HTTP požadavku.
+- Jde o **systémovou hlavičku**, kterou nelze přepsat vlastní hodnotou (viz [vlastní formát](#vlastní-formát-webhooku) níže).
+
+---
+
+## Podpis požadavku (X-Request-Signature)
+
+Pokud je pro API klíč nastaveno podpisové tajemství (viz [callback_secret](#nastavení-podpisového-tajemství-callback_secret) níže), přidá SmsManager ke každému požadavku (kromě `GET`) hlavičku **`X-Request-Signature`**. Její hodnota je **HMAC‑SHA256 z přesného těla požadavku**, zakódovaná v hexadecimální podobě, kde klíčem je vaše tajemství:
+
+```text
+X-Request-Signature = hex( HMAC-SHA256( secret, raw_request_body ) )
+```
+
+Pravost ověříte tak, že si stejný podpis spočítáte nad **surovým tělem požadavku přesně tak, jak dorazilo** (před parsováním JSON) a porovnáte jej v konstantním čase s přijatou hlavičkou:
+
+```javascript Ověření podpisu (Node.js)
+import crypto from "node:crypto";
+
+function verifySignature(rawBody, signatureHeader, secret) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody, "utf8")   // rawBody = přesné bajty těla, ne přeserializovaný JSON
+    .digest("hex");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(signatureHeader ?? "", "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Kontrolní vektor: HMAC-SHA256(secret="secret", body="body")
+// = dc46983557fea127b43af721467eb9b3fde2338fe3e14f51952aa8478c13d355
+```
+
+<Warning>
+  Podpis počítejte vždy nad **surovými bajty těla**, které jste přijali — nikoli nad výsledkem, který získáte po deserializaci a opětovné serializaci JSON. Přeuspořádání klíčů nebo změna mezer by změnily vstup HMAC a podpis by neseděl.
+</Warning>
+
+<Note>
+  Požadavky metodou `GET` **nejsou podepsané** (nemají tělo). Pokud pro klíč není nastavené tajemství, hlavička `X-Request-Signature` se vůbec nepřidává.
+</Note>
+
+---
+
+## Nastavení podpisového tajemství (callback_secret)
+
+Podpisové tajemství nastavíte jako pole **`default_callback_secret`** na API klíči přes SmsManager REST API — stejným způsobem jako [výchozí callback URL](/guides/webhooks):
+
+```bash Nastavit podpisové tajemství
+curl -X POST https://rest-api.smsmngr.com/v1/apikey/update \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "default_callback_secret": "vase-tajne-heslo"
+  }'
+```
+
+Jakmile je tajemství nastavené, jsou všechny webhooky odeslané tímto API klíčem podepsané hlavičkou `X-Request-Signature`. Tajemství nemá žádnou výchozí hodnotu — dokud jej nenastavíte, požadavky se nepodepisují. Uchovávejte jej v tajnosti; rotaci provedete opětovným voláním `apikey/update` s novou hodnotou.
+
+---
+
+## Vlastní formát webhooku
+
+Ve výchozím stavu SmsManager posílá `POST` s **polem objektů událostí** (viz [formát payloadu](/guides/webhooks)). Pokud potřebujete jiný tvar požadavku — vlastní obálku, hlavičky, metodu nebo formát — nastavte pole `callback` jako **objekt** místo textové URL. Tuto definici SmsManager zvaliduje a použije k sestavení každého požadavku.
+
+| Pole | Popis | Výchozí |
+| --- | --- | --- |
+| `url` | Cílová URL (povinné). Musí být veřejná `http`/`https` adresa; privátní, loopback a link‑local IP adresy jsou odmítnuty. | — |
+| `method` | HTTP metoda. Povolené: `POST`, `PUT`, `PATCH`, `GET`. | `POST` |
+| `content_type` | Formát těla. Povolené: `application/json`, `application/x-www-form-urlencoded`. | `application/json` |
+| `headers` | Objekt vlastních hlaviček (hodnoty jsou řetězce). Hlavičky pro řízení spojení (`host`, `content-length`, `connection`, `transfer-encoding` a další hop‑by‑hop, `proxy-*`) jsou tiše zahozeny. `Content-Type` a `User-Agent` lze přepsat. | `{}` |
+| `item` | Šablona vykreslená jednou za každou událost (objekt nebo pole). | — |
+| `body` | Šablona obálky celého těla. Musí obsahovat právě jeden zástupný symbol `[[items]]`, kam se vloží pole vykreslených položek `item`. | — |
+| `batch_size` | Počet událostí v jednom požadavku (1–500). Vynuceno na `1` u `GET` a u definice, která má `body` bez `item`. | `100` |
+| `timeout_ms` | Časový limit čekání na odpověď v ms (1000–10000). | `5000` |
+
+### Šablony a proměnné
+
+Hodnoty v šablonách `item` a `body` mohou obsahovat zástupné symboly ve tvaru **`[[cesta]]`** (dvojité hranaté závorky). Cesta podporuje tečkovou i indexovou notaci, např. `[[message_id]]`, `[[to.phone_number]]`, `[[payload.order_id]]`.
+
+- **Celá hodnota** je jeden zástupný symbol (`"id": "[[message_id]]"`) → dosadí se v původním datovém typu (řetězec, číslo, objekt, pole, `null`).
+- **Symbol uvnitř textu** (`"msg": "ID: [[message_id]]"`) → hodnota se převede na řetězec a vloží do textu.
+- **Únik**: `[[!cesta]]` vypíše doslovně `[[cesta]]`.
+- Klíče objektů se nešablonují — nahrazují se pouze hodnoty. Neznámá proměnná zůstane v textu beze změny.
+
+Dostupné proměnné odpovídají poli události: `message_id`, `request_id`, `phone_number` (nebo `to.phone_number`), `result`, `timestamp`, `gateway`, `type` a `payload` (včetně vnořených cest jako `payload.order_id`).
+
+### Sestavení těla (item / body)
+
+Kombinace polí `item` a `body` určuje výsledný tvar požadavku:
+
+| `item` | `body` | Výsledné tělo |
+| --- | --- | --- |
+| ano | ne | Pole vykreslených položek `item` (jedna za událost). |
+| ano | ano | Pole položek `item` vložené na místo `[[items]]` v obálce `body`. |
+| ne | ano | Jediná událost vykreslená do `body` (`batch_size` je vynuceno na 1). |
+| ne | ne | Výchozí pole surových objektů událostí (stejné jako bez vlastního formátu). |
+
+### Příklady
+
+Vlastní JSON obálka s hlavičkou `Authorization` — každá událost se vykreslí přes `item` a pole se vloží do `body`:
+
+```json Vlastní obálka (item + body)
+{
+  "callback": {
+    "url": "https://api.example.com/track",
+    "headers": { "Authorization": "Token super-secret-value" },
+    "body": { "commands": "[[items]]" },
+    "item": {
+      "name": "customers/events",
+      "properties": { "message_id": "[[message_id]]", "status": "[[result]]" }
+    }
+  }
+}
+```
+
+Pro dvě události pošle SmsManager tělo `{"commands":[ {…MID1…}, {…MID2…} ]}`.
+
+Formát `application/x-www-form-urlencoded`:
+
+```json Form-urlencoded
+{
+  "callback": {
+    "url": "https://api.example.com/hook",
+    "content_type": "application/x-www-form-urlencoded",
+    "body": { "id": "[[message_id]]", "status": "[[result]]" }
+  }
+}
+```
+
+Metoda `GET` — vykreslená hodnota se připojí jako query řetězec:
+
+```json GET s query parametry
+{
+  "callback": {
+    "url": "https://api.example.com/hook",
+    "method": "GET",
+    "body": { "id": "[[message_id]]", "status": "[[result]]" }
+  }
+}
+```
+
+### Omezení
+
+- Celá definice `callback` musí serializovat do **max. 8192 bajtů**; výsledné vykreslené tělo do **max. 1 MiB**.
+- U metody `GET` se vykreslená hodnota vloží do query řetězce — bez těla, bez hlavičky `Content-Type` a bez podpisu; `batch_size` je 1.
+- Systémové hlavičky `User-Agent` a `X-Request-Id` (vždy) a `X-Request-Signature` (je‑li nastavené tajemství, mimo `GET`) se přidávají automaticky. `X-Request-Id` má vždy přednost před vlastní hlavičkou stejného jména.
+
+---
+
+## Další kroky
+
+<CardGroup cols={2}>
+  <Card title="Webhooky" icon="webhook" href="/guides/webhooks">
+    Nastavení callback URL, formát payloadu, typy událostí a sekvence stavů.
+  </Card>
+
+  <Card title="Reference webhooků" icon="code" href="/api-reference/json-v2/webhooks">
+    Kompletní reference polí pro všechny tři webhook události.
+  </Card>
+
+  <Card title="message_id a request_id" icon="fingerprint" href="/concepts/message-ids">
+    Jak se skládají identifikátory, které webhooky a X-Request-Id používají.
+  </Card>
+
+  <Card title="Příjem požadavku" icon="inbox" href="/concepts/request-acceptance">
+    Proč `200 OK` znamená jen přijetí ke zpracování a kdy dorazí doručenky.
+  </Card>
+</CardGroup>

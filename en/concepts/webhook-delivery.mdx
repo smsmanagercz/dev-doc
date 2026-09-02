@@ -1,0 +1,220 @@
+---
+title: "Webhook Delivery, Signatures, and Custom Format"
+sidebarTitle: "Webhook delivery"
+description: "How SmsManager delivers webhooks: how long it waits for a response (5 s), that it requires HTTP 2xx, how it retries (up to 5×), the X-Request-Id and X-Request-Signature headers, setting callback_secret, and building a custom request format."
+---
+
+This page explains the **mechanics of webhook delivery** — how long SmsManager waits for your server to respond, what it treats as success, how it retries, how to verify a request's authenticity via its signature, and how to build a custom request format. For configuring the callback URL, the payload format, and the event types, see the [Webhooks](/guides/webhooks) guide.
+
+---
+
+## Delivery and the expected response
+
+When an event occurs, SmsManager sends an HTTP request to your callback URL and **waits at most 5 seconds** for a response. If your server does not respond within that window, the attempt is treated as failed and queued for retry.
+
+- **Only a `2xx` status code (200–299) counts as success.** The response body is never read — only the status code matters, so you don't need to return any particular content.
+- **Redirects (`3xx`) are not followed** and count as failure. Always point the callback at the final URL directly.
+
+<Tip>
+  Respond `200 OK` as quickly as possible and process the payload afterwards (asynchronously, e.g. via a queue). This keeps your response time under the 5 s limit and avoids needless retries. See the [Best practices](/guides/webhooks) section of the guide for more.
+</Tip>
+
+---
+
+## Retries on failure
+
+If an attempt fails, SmsManager retries delivery. A retry is triggered when:
+
+- the server did not respond (timed out) or the connection failed,
+- the response was a redirect (`3xx`),
+- the status was `408 Request Timeout` or `429 Too Many Requests`,
+- any `5xx` status,
+- any other `4xx` status.
+
+An event is delivered **at most 5 times** (the first attempt plus up to 4 retries). The delay between attempts grows (exponential backoff). After the fifth failed attempt the event is dropped.
+
+| Attempt | Delay before this attempt |
+| --- | --- |
+| 1 (first delivery) | — |
+| 2 | ~30 s |
+| 3 | ~60 s |
+| 4 | ~120 s |
+| 5 (last) | ~240 s |
+
+<Note>
+  Because of retries, your handler must be **idempotent** — the same event may arrive more than once. To dedupe at the HTTP-request level use the [`X-Request-Id`](#the-x-request-id-header) header (below); at the individual-event level use `message_id` + `result` (see the [idempotency note](/guides/webhooks) in the guide).
+</Note>
+
+---
+
+## The X-Request-Id header
+
+Every webhook request carries an **`X-Request-Id`** header — a UUID-formatted identifier derived from the set of messages combined into that delivery. It is built as `sha256` of the sorted message IDs, whose first 32 hex characters are reformatted into a UUID.
+
+- **It is stable across retries** of the same delivery and independent of message order — so you can use it as a deduplication key at the HTTP-request level.
+- It is a **system header** that cannot be overridden by a custom value (see [custom format](#custom-webhook-format) below).
+
+---
+
+## Request signature (X-Request-Signature)
+
+If a signing secret is configured for the API key (see [callback_secret](#setting-the-signing-secret-callback_secret) below), SmsManager adds an **`X-Request-Signature`** header to every request (except `GET`). Its value is the **HMAC‑SHA256 of the exact request body**, hex-encoded, keyed with your secret:
+
+```text
+X-Request-Signature = hex( HMAC-SHA256( secret, raw_request_body ) )
+```
+
+Verify authenticity by computing the same signature over the **raw request body exactly as received** (before JSON parsing) and comparing it to the received header in constant time:
+
+```javascript Verify the signature (Node.js)
+import crypto from "node:crypto";
+
+function verifySignature(rawBody, signatureHeader, secret) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody, "utf8")   // rawBody = the exact body bytes, not re-serialized JSON
+    .digest("hex");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(signatureHeader ?? "", "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Test vector: HMAC-SHA256(secret="secret", body="body")
+// = dc46983557fea127b43af721467eb9b3fde2338fe3e14f51952aa8478c13d355
+```
+
+<Warning>
+  Always compute the signature over the **raw body bytes** you received — not over the result of deserializing and re-serializing the JSON. Reordering keys or changing whitespace would change the HMAC input and the signature would not match.
+</Warning>
+
+<Note>
+  `GET` requests are **not signed** (they have no body). If no secret is set for the key, the `X-Request-Signature` header is not added at all.
+</Note>
+
+---
+
+## Setting the signing secret (callback_secret)
+
+Set the signing secret as the **`default_callback_secret`** field on the API key via the SmsManager REST API — the same way you set the [default callback URL](/guides/webhooks):
+
+```bash Set the signing secret
+curl -X POST https://rest-api.smsmngr.com/v1/apikey/update \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "default_callback_secret": "your-secret-value"
+  }'
+```
+
+Once the secret is set, all webhooks sent by that API key are signed with the `X-Request-Signature` header. The secret has no default value — until you set it, requests are not signed. Keep it secret; rotate it by calling `apikey/update` again with a new value.
+
+---
+
+## Custom webhook format
+
+By default SmsManager sends a `POST` with an **array of event objects** (see [payload format](/guides/webhooks)). If you need a different request shape — a custom envelope, headers, method, or format — set the `callback` field as an **object** instead of a URL string. SmsManager validates this definition and uses it to build each request.
+
+| Field | Description | Default |
+| --- | --- | --- |
+| `url` | Target URL (required). Must be a public `http`/`https` address; private, loopback, and link‑local IPs are rejected. | — |
+| `method` | HTTP method. Allowed: `POST`, `PUT`, `PATCH`, `GET`. | `POST` |
+| `content_type` | Body format. Allowed: `application/json`, `application/x-www-form-urlencoded`. | `application/json` |
+| `headers` | Object of custom headers (string values). Connection-control headers (`host`, `content-length`, `connection`, `transfer-encoding` and other hop‑by‑hop, `proxy-*`) are silently dropped. `Content-Type` and `User-Agent` can be overridden. | `{}` |
+| `item` | Template rendered once per event (object or array). | — |
+| `body` | Envelope template for the whole body. Must contain exactly one `[[items]]` placeholder, where the array of rendered `item`s is inserted. | — |
+| `batch_size` | Number of events per request (1–500). Forced to `1` for `GET` and for a definition that has `body` without `item`. | `100` |
+| `timeout_ms` | Response timeout in ms (1000–10000). | `5000` |
+
+### Templates and variables
+
+Values in the `item` and `body` templates may contain placeholders in the form **`[[path]]`** (double square brackets). The path supports dotted and indexed notation, e.g. `[[message_id]]`, `[[to.phone_number]]`, `[[payload.order_id]]`.
+
+- **Whole-value** placeholder (`"id": "[[message_id]]"`) → substituted keeping its native JSON type (string, number, object, array, `null`).
+- **Placeholder inside text** (`"msg": "ID: [[message_id]]"`) → the value is stringified and inserted into the text.
+- **Escape**: `[[!path]]` outputs the literal `[[path]]`.
+- Object keys are not templated — only values are substituted. An unknown variable is left in place unchanged.
+
+The available variables mirror the event fields: `message_id`, `request_id`, `phone_number` (or `to.phone_number`), `result`, `timestamp`, `gateway`, `type`, and `payload` (including nested paths like `payload.order_id`).
+
+### Assembling the body (item / body)
+
+The combination of `item` and `body` determines the resulting request shape:
+
+| `item` | `body` | Resulting body |
+| --- | --- | --- |
+| yes | no | Array of rendered `item`s (one per event). |
+| yes | yes | Array of `item`s inserted at `[[items]]` inside the `body` envelope. |
+| no | yes | A single event rendered into `body` (`batch_size` forced to 1). |
+| no | no | Default array of raw event objects (same as without a custom format). |
+
+### Examples
+
+Custom JSON envelope with an `Authorization` header — each event is rendered via `item` and the array is inserted into `body`:
+
+```json Custom envelope (item + body)
+{
+  "callback": {
+    "url": "https://api.example.com/track",
+    "headers": { "Authorization": "Token super-secret-value" },
+    "body": { "commands": "[[items]]" },
+    "item": {
+      "name": "customers/events",
+      "properties": { "message_id": "[[message_id]]", "status": "[[result]]" }
+    }
+  }
+}
+```
+
+For two events, SmsManager sends the body `{"commands":[ {…MID1…}, {…MID2…} ]}`.
+
+The `application/x-www-form-urlencoded` format:
+
+```json Form-urlencoded
+{
+  "callback": {
+    "url": "https://api.example.com/hook",
+    "content_type": "application/x-www-form-urlencoded",
+    "body": { "id": "[[message_id]]", "status": "[[result]]" }
+  }
+}
+```
+
+The `GET` method — the rendered value is appended as a query string:
+
+```json GET with query parameters
+{
+  "callback": {
+    "url": "https://api.example.com/hook",
+    "method": "GET",
+    "body": { "id": "[[message_id]]", "status": "[[result]]" }
+  }
+}
+```
+
+### Limits
+
+- The whole `callback` definition must serialize to **at most 8192 bytes**; the resulting rendered body to **at most 1 MiB**.
+- For the `GET` method the rendered value goes into the query string — no body, no `Content-Type` header, and no signature; `batch_size` is 1.
+- The system headers `User-Agent` and `X-Request-Id` (always) and `X-Request-Signature` (when a secret is set, except for `GET`) are added automatically. `X-Request-Id` always takes precedence over a custom header of the same name.
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Webhooks" icon="webhook" href="/guides/webhooks">
+    Configuring the callback URL, payload format, event types, and status sequences.
+  </Card>
+
+  <Card title="Webhook reference" icon="code" href="/api-reference/json-v2/webhooks">
+    Complete field reference for all three webhook events.
+  </Card>
+
+  <Card title="Message IDs and request IDs" icon="fingerprint" href="/concepts/message-ids">
+    How the identifiers that webhooks and X-Request-Id are built from are composed.
+  </Card>
+
+  <Card title="Request acceptance" icon="inbox" href="/concepts/request-acceptance">
+    Why `200 OK` means only accepted for processing, and when delivery reports arrive.
+  </Card>
+</CardGroup>
