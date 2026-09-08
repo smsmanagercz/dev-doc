@@ -37,14 +37,6 @@
   "navbar": {
     "links": [
       {
-        "label": "← smsmanager.com",
-        "href": "https://smsmanager.com"
-      },
-      {
-        "label": "Čeština",
-        "href": "https://smsmanager.cz/docs"
-      },
-      {
         "label": "Support",
         "href": "mailto:cc@smsmanager.com"
       }
@@ -315,8 +307,139 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/smsmanager"
-    }
+      "x": "https://x.com/smsmanager",
+      "github": "https://github.com/smsmngr"
+    },
+    "links": [
+      {
+        "header": "Product",
+        "items": [
+          {
+            "label": "SMS",
+            "href": "https://smsmanager.com/sms/"
+          },
+          {
+            "label": "WhatsApp",
+            "href": "https://smsmanager.com/whatsapp/"
+          },
+          {
+            "label": "Viber",
+            "href": "https://smsmanager.com/viber/"
+          },
+          {
+            "label": "RCS",
+            "href": "https://smsmanager.com/rcs/"
+          },
+          {
+            "label": "SMS PIN, 2FA",
+            "href": "https://smsmanager.com/sms-pin/"
+          },
+          {
+            "label": "Receive SMS",
+            "href": "https://smsmanager.com/receive-sms/"
+          },
+          {
+            "label": "SIM hosting",
+            "href": "https://smsmanager.com/sim-hosting/"
+          }
+        ]
+      },
+      {
+        "header": "For developers",
+        "items": [
+          {
+            "label": "SMS API",
+            "href": "https://smsmanager.com/sms-api/"
+          },
+          {
+            "label": "How the API works",
+            "href": "https://smsmanager.com/how-api-works/"
+          },
+          {
+            "label": "SDK libraries",
+            "href": "https://smsmanager.com/api-sdk/"
+          },
+          {
+            "label": "Integrations",
+            "href": "https://smsmanager.com/integration/"
+          },
+          {
+            "label": "Partner solution",
+            "href": "https://smsmanager.com/partneri/"
+          },
+          {
+            "label": "Code examples",
+            "href": "https://github.com/smsmngr/dev-examples"
+          }
+        ]
+      },
+      {
+        "header": "Resources",
+        "items": [
+          {
+            "label": "Help center",
+            "href": "https://smsmanager.com/support/category/help/"
+          },
+          {
+            "label": "FAQ",
+            "href": "https://smsmanager.com/faq/"
+          },
+          {
+            "label": "Blog",
+            "href": "https://smsmanager.com/blog/"
+          },
+          {
+            "label": "SMS length tool",
+            "href": "https://smsmanager.com/tool/delka-sms/"
+          },
+          {
+            "label": "Phone validator",
+            "href": "https://smsmanager.com/tool/validace-cisla/"
+          },
+          {
+            "label": "Number verification",
+            "href": "https://smsmanager.com/sms-check/"
+          },
+          {
+            "label": "SMS opt-out",
+            "href": "https://smsmanager.com/sms-opt-out/"
+          }
+        ]
+      },
+      {
+        "header": "Company",
+        "items": [
+          {
+            "label": "Pricing",
+            "href": "https://smsmanager.com/pricing/"
+          },
+          {
+            "label": "Sign up",
+            "href": "https://smsmanager.com/start/"
+          },
+          {
+            "label": "Dashboard",
+            "href": "https://app.smsmanager.com"
+          },
+          {
+            "label": "Contact",
+            "href": "https://smsmanager.com/support/kontakt/"
+          },
+          {
+            "label": "Status",
+            "href": "https://smsmanager.statuspage.io"
+          },
+          {
+            "label": "Čeština",
+            "href": "https://smsmanager.cz/docs"
+          },
+          {
+            "label": "English",
+            "href": "https://smsmanager.com/docs"
+          }
+        ]
+      }
+    ]
   },
   "redirects": [
     {

@@ -58,12 +58,6 @@ body {
   color: #ffffff !important;
 }
 
-/* Language selector: its label was dark and invisible on the dark bar. */
-#localization-select-trigger,
-#localization-select-trigger span {
-  color: #e5e7eb !important;
-}
-
 /* Theme toggle icon: brighten so it's visible on the dark bar. */
 #theme-preference-menu-trigger {
   color: #d1d5db !important;
@@ -126,4 +120,39 @@ body {
   #sidebar-content {
     width: 18rem !important;
   }
+}
+
+/* ── Footer link columns ───────────────────────────────────────
+   Setting `footer.links` in docs.json swaps Mintlify's minimal footer for the
+   "advanced footer": already full-width and rendered outside #content-area, so
+   nothing here touches layout — colour and type only.
+
+   Column headers render as <p class="font-semibold">, not headings. */
+#footer p {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+/* Mintlify's default link colour is gray-950/50, which falls below the 4.5:1
+   contrast floor on white. Nudge it up in both appearance modes. */
+#footer a {
+  color: rgba(3, 7, 18, 0.72);
+}
+
+#footer a:hover {
+  color: rgba(3, 7, 18, 0.95);
+}
+
+.dark #footer a {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.dark #footer a:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* The language pair reads as a switch rather than two more marketing links. */
+#footer a[href$="smsmanager.cz/docs"],
+#footer a[href$="smsmanager.com/docs"] {
+  font-weight: 600;
 }

@@ -37,14 +37,6 @@
   "navbar": {
     "links": [
       {
-        "label": "← smsmanager.cz",
-        "href": "https://smsmanager.cz"
-      },
-      {
-        "label": "English",
-        "href": "https://smsmanager.com/docs"
-      },
-      {
         "label": "Support",
         "href": "mailto:cc@smsmanager.com"
       }
@@ -315,8 +307,139 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/smsmanager"
-    }
+      "x": "https://x.com/smsmanagercz",
+      "github": "https://github.com/smsmngr"
+    },
+    "links": [
+      {
+        "header": "Produkt",
+        "items": [
+          {
+            "label": "SMS",
+            "href": "https://smsmanager.cz/sms/"
+          },
+          {
+            "label": "WhatsApp",
+            "href": "https://smsmanager.cz/whatsapp/"
+          },
+          {
+            "label": "Viber",
+            "href": "https://smsmanager.cz/viber/"
+          },
+          {
+            "label": "RCS",
+            "href": "https://smsmanager.cz/rcs/"
+          },
+          {
+            "label": "SMS PIN, 2FA",
+            "href": "https://smsmanager.cz/sms-pin/"
+          },
+          {
+            "label": "Příjem SMS",
+            "href": "https://smsmanager.cz/prijem-sms/"
+          },
+          {
+            "label": "SIM hosting",
+            "href": "https://smsmanager.cz/sim-hosting/"
+          }
+        ]
+      },
+      {
+        "header": "Pro vývojáře",
+        "items": [
+          {
+            "label": "SMS API",
+            "href": "https://smsmanager.cz/sms-api/"
+          },
+          {
+            "label": "Jak funguje API",
+            "href": "https://smsmanager.cz/jak-funguje-api/"
+          },
+          {
+            "label": "SDK knihovny",
+            "href": "https://smsmanager.cz/api-sdk/"
+          },
+          {
+            "label": "Integrace",
+            "href": "https://smsmanager.cz/integrace/"
+          },
+          {
+            "label": "Partnerské řešení",
+            "href": "https://smsmanager.cz/partneri/"
+          },
+          {
+            "label": "Příklady kódu",
+            "href": "https://github.com/smsmngr/dev-examples"
+          }
+        ]
+      },
+      {
+        "header": "Zdroje",
+        "items": [
+          {
+            "label": "Nápověda",
+            "href": "https://smsmanager.cz/support/category/help/"
+          },
+          {
+            "label": "FAQ",
+            "href": "https://smsmanager.cz/faq/"
+          },
+          {
+            "label": "Blog",
+            "href": "https://smsmanager.cz/blog/"
+          },
+          {
+            "label": "Délka SMS",
+            "href": "https://smsmanager.cz/tool/delka-sms/"
+          },
+          {
+            "label": "Validace čísla",
+            "href": "https://smsmanager.cz/tool/validace-cisla/"
+          },
+          {
+            "label": "Ověřování čísel",
+            "href": "https://smsmanager.cz/sms-check/"
+          },
+          {
+            "label": "SMS opt-out",
+            "href": "https://smsmanager.cz/sms-opt-out/"
+          }
+        ]
+      },
+      {
+        "header": "Společnost",
+        "items": [
+          {
+            "label": "Ceník",
+            "href": "https://smsmanager.cz/ceny/"
+          },
+          {
+            "label": "Registrace",
+            "href": "https://smsmanager.cz/start/"
+          },
+          {
+            "label": "Dashboard",
+            "href": "https://app.smsmanager.com"
+          },
+          {
+            "label": "Kontakt",
+            "href": "https://smsmanager.cz/support/kontakt/"
+          },
+          {
+            "label": "Stav služeb",
+            "href": "https://smsmanager.statuspage.io"
+          },
+          {
+            "label": "Čeština",
+            "href": "https://smsmanager.cz/docs"
+          },
+          {
+            "label": "English",
+            "href": "https://smsmanager.com/docs"
+          }
+        ]
+      }
+    ]
   },
   "redirects": [
     {

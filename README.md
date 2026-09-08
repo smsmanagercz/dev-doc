@@ -1,9 +1,15 @@
 # SmsManager Developer Docs
 
-Source of the **SmsManager developer documentation** — the docs published at
-**[developers.smsmanager.com](https://developers.smsmanager.com)** and built with
-[Mintlify](https://mintlify.com). The docs are **bilingual**: **Czech (primary)**
-and **English**.
+Source of the **SmsManager developer documentation**, built with
+[Mintlify](https://mintlify.com). The docs are **bilingual** and ship as **two
+independent Mintlify projects**, each deployed under its own marketing domain:
+
+| Project | Live at |
+|---|---|
+| `cs/` | **[smsmanager.cz/docs](https://smsmanager.cz/docs)** (Czech — primary) |
+| `en/` | **[smsmanager.com/docs](https://smsmanager.com/docs)** (English) |
+
+There is no root `docs.json`; each project is self-contained.
 
 If you just want to *read* the docs, go to the live site. This repo is for
 **editing** them.
@@ -21,20 +27,23 @@ Plus getting-started tutorials, how-to guides, and core-concept explanations.
 
 ## Repository structure
 
+`cs/` and `en/` are exact structural mirrors — one Mintlify project each:
+
 ```
-docs.json              # site config + navigation (languages, tabs, groups, OpenAPI refs)
-index.mdx              # root landing
-style.css              # custom CSS (auto-loaded): dark developer-portal header, etc.
-fonts/                 # self-hosted GothamRounded heading font
-cs/                    # 🇨🇿 Czech pages (primary language) — served at the root URL
-en/                    # 🇬🇧 English pages — served under /en
-  ├─ index, introduction, quickstart, authentication
-  ├─ concepts/         # channels, message-flow, message-ids, scheduling, …
-  ├─ guides/           # send-sms, send-whatsapp, whatsapp-sms-fallback, webhooks, …
-  ├─ reference/        # errors, rate-limits, phone-numbers
-  └─ api-reference/    # per-API overview pages
-openapi/{cs,en}/       # OpenAPI specs that power the auto-generated API reference
-  ├─ json/  rest/  verify/  waba_rest/
+cs/                      # 🇨🇿 Czech (primary)  → smsmanager.cz/docs
+├─ docs.json             # config + navbar + footer + navigation + OpenAPI refs
+├─ style.css             # custom CSS (auto-loaded): dark header, footer colours
+├─ fonts/                # self-hosted GothamRounded heading font
+├─ index, introduction, quickstart, authentication
+├─ concepts/             # channels, message-flow, message-ids, scheduling, …
+├─ guides/               # send-sms, send-whatsapp, whatsapp-sms-fallback, webhooks, …
+├─ reference/            # errors, rate-limits, phone-numbers, …
+├─ tutorials/
+├─ api-reference/        # per-API overview pages
+└─ openapi/              # specs that power the auto-generated API reference
+   ├─ json/  rest/  verify/  waba_rest/
+en/                      # 🇬🇧 English      → smsmanager.com/docs
+└─ … identical structure …
 ```
 
 ### How content is organized
@@ -54,23 +63,34 @@ specs — don't hand-write endpoint docs; edit the spec in `openapi/`.
 
 ## Local preview
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) and run it where
-`docs.json` lives (the repo root):
+Install the [Mintlify CLI](https://www.npmjs.com/package/mint) and run it from
+**inside a language directory** — that is where `docs.json` lives. One language
+at a time, or both at once on separate ports:
 
 ```bash
 npm i -g mint
-mint dev            # → http://localhost:3000
+cd cs && mint dev                 # → http://localhost:3000
+cd en && mint dev --port 3001     # → http://localhost:3001
 ```
+
+`Error generating favicons` on startup is expected locally: the favicon is a
+remote URL that the CLI cannot fetch. It does not affect the preview.
 
 ## Editing
 
 - **Pages** are MDX under `cs/` and `en/`. Edit the matching file in **both**
   languages (Czech is the source of truth; keep English in sync).
-- **Navigation** (which pages appear, in what order/tab/group) lives in
-  `docs.json` under `navigation.languages[]`.
-- **API reference** comes from `openapi/<lang>/…` — change the spec, not a page.
+- **Navigation** (which pages appear, in what order/tab/group) lives in each
+  project's `docs.json` under `navigation.tabs[]`.
+- **API reference** comes from `<lang>/openapi/…` — change the spec, not a page.
+- **Header and footer** are `docs.json` too: `navbar.links` / `navbar.primary`
+  for the header, and `footer.links` (marketing cross-links, max **4** columns)
+  plus `footer.socials` for the footer. The Czech ↔ English switch is the last
+  two items of the final footer column. Edit both projects.
 - **Look & feel**: brand color and heading font are in `docs.json`; further
-  tweaks (e.g. the dark header) are in `style.css`.
+  tweaks (the dark header, footer colours) are in `style.css`. The two
+  `style.css` files are byte-identical — keep them that way
+  (`diff cs/style.css en/style.css`).
 - Use the demo number `+420777123456` and the literal `YOUR_API_KEY` placeholder
   in examples — never commit a real key.
 
@@ -82,6 +102,6 @@ push to `main` to ship.
 
 ## Related
 
-- **Live docs:** https://developers.smsmanager.com
+- **Live docs:** https://smsmanager.cz/docs · https://smsmanager.com/docs
 - **Code examples:** [`smsmngr/dev-examples`](https://github.com/smsmngr/dev-examples)
 - **API dashboard / keys:** https://app.smsmanager.com/app/developers/apikeys
